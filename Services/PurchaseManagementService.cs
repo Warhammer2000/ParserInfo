@@ -3,11 +3,11 @@ using Parser.Db;
 
 namespace Parser.Services
 {
-    public class DataService
+    public class PurchaseManagementService
     {
         private readonly AppDbContext _context;
 
-        public DataService(AppDbContext appDb)
+        public PurchaseManagementService(AppDbContext appDb)
         {
             _context = appDb;
         }

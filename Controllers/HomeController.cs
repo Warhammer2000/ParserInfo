@@ -8,11 +8,11 @@ namespace Parser.Controllers
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
-        private readonly DataService _dataService;
-        public HomeController(ILogger<HomeController> logger, DataService data)
+        private readonly PurchaseManagementService _purchaseService;
+        public HomeController(ILogger<HomeController> logger, PurchaseManagementService purchaseService)
         {
             _logger = logger;
-            _dataService = data;
+            _purchaseService = purchaseService;
         }
 
         public IActionResult Index()
@@ -33,7 +33,7 @@ namespace Parser.Controllers
 
         public async Task<IActionResult> DeleteAllData()
         {
-            await _dataService.DeleteAllDataAsync();
+            await _purchaseService.DeleteAllDataAsync();
             return RedirectToAction("Index");
         }
     }

@@ -1,60 +1,37 @@
 ﻿using HtmlAgilityPack;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using Parser.Db;
 using Parser.Models;
 using System.Net.Http;
 
 namespace Parser.Services
 {
-    public class DataParser
+    public class PurchaseParsingService
     {
-        private readonly AppDbContext _context;
         private readonly HttpClient _httpClient;
-        private readonly IMemoryCache _cache;
-        public DataParser(AppDbContext context, IHttpClientFactory httpClientFactory, IMemoryCache cache)
+        private readonly ParserSettings _settings;
+
+        public PurchaseParsingService(IHttpClientFactory httpClientFactory, IOptions<ParserSettings> settings)
         {
-            _context = context;
             _httpClient = httpClientFactory.CreateClient();
             _httpClient.Timeout = TimeSpan.FromMinutes(2);
-            _cache = cache;
+            _settings = settings.Value;
         }
 
-        public async Task ParseAndSaveData(string searchPhrase, int pageCount)
+        public async Task<List<Purchase>> ParseDataAsync(string searchPhrase, int pageCount)
         {
-            string cacheKey = $"Purchases_{searchPhrase}_{pageCount}";
-
-            if (_cache.TryGetValue(cacheKey, out List<Purchase> cachedPurchases))
-            {
-                Console.WriteLine("Данные загружены из кэша.");
-                
-                _context.Purchases.AddRange(cachedPurchases);
-                await _context.SaveChangesAsync();
-                return;
-            }
-
-            if (_context.Purchases.AsNoTracking().Any())
-            {
-                Console.WriteLine("Данные уже есть в базе, пропускаем парсинг.");
-                return;
-            }
-
             var baseUrl = $"https://www.roseltorg.ru/procedures/search?text={Uri.EscapeDataString(searchPhrase)}";
-
             var tasks = new List<Task<List<Purchase>>>();
 
-            for (int i = 1; i <= pageCount; i++)
+            Parallel.For(1, pageCount + 1, new ParallelOptions { MaxDegreeOfParallelism = _settings.MaxParallelism }, i =>
             {
                 var url = $"{baseUrl}&page={i}";
                 tasks.Add(ProcessPageAsync(url));
-            }
+            });
 
-            var allPurchases = (await Task.WhenAll(tasks)).SelectMany(p => p).ToList();
-
-            _cache.Set(cacheKey, allPurchases, TimeSpan.FromMinutes(30));
-
-            _context.Purchases.AddRange(allPurchases);
-            await _context.SaveChangesAsync();
+            return (await Task.WhenAll(tasks)).SelectMany(p => p).ToList();
         }
 
         private async Task<List<Purchase>> ProcessPageAsync(string url)
@@ -67,25 +44,9 @@ namespace Parser.Services
             catch (HttpRequestException ex)
             {
                 Console.WriteLine($"Request failed: {ex.Message}");
-
-                for (int i = 0; i < 40; i++)
-                {
-                    try
-                    {
-                        await Task.Delay(2000);
-                        var html = await _httpClient.GetStringAsync(url);
-                        return ParseHtml(html);
-                    }
-                    catch (HttpRequestException retryEx)
-                    {
-                        Console.WriteLine($"Retry {i + 1} failed: {retryEx.Message}");
-                    }
-                }
-
-                throw new Exception("Failed to retrieve data after multiple attempts.");
+                throw;
             }
         }
-
 
         private List<Purchase> ParseHtml(string html)
         {
@@ -93,20 +54,18 @@ namespace Parser.Services
             htmlDoc.LoadHtml(html);
 
             var purchases = new List<Purchase>();
-
             var nodes = htmlDoc.DocumentNode.SelectNodes("//div[@class='search-results__item']");
             if (nodes == null) return purchases;
 
             foreach (var node in nodes)
             {
-                var endDateText = GetNodeTextOrDefault(node, ".//time[@class='search-results__time']", "");
                 var purchase = new Purchase
                 {
                     PurchaseNumber = GetNodeTextOrDefault(node, ".//div[@class='search-results__lot']/a", "Не указан"),
                     Title = GetNodeTextOrDefault(node, ".//div[@class='search-results__subject']/a", "Без названия"),
                     Organizer = GetNodeTextOrDefault(node, ".//div[@class='search-results__customer']/p", "Не указан"),
                     Price = GetNodeTextOrDefault(node, ".//div[@class='search-results__sum']/p", "Цена не указана"),
-                    EndDate = ParseDateAsString(endDateText, "Дата не указана"),
+                    EndDate = ParseDateAsString(GetNodeTextOrDefault(node, ".//time[@class='search-results__time']", "")),
                     Location = GetNodeTextOrDefault(node, ".//div[@class='search-results__region']/p", "Местоположение не указано")
                 };
                 purchases.Add(purchase);
@@ -121,10 +80,10 @@ namespace Parser.Services
             return selectedNode != null && !string.IsNullOrWhiteSpace(selectedNode.InnerText) ? selectedNode.InnerText.Trim() : defaultValue;
         }
 
-        private string ParseDateAsString(string dateText, string defaultValue)
+        private string ParseDateAsString(string dateText)
         {
             var cleanDateText = dateText.Split('\n')[0].Trim();
-            return !string.IsNullOrEmpty(cleanDateText) ? cleanDateText : defaultValue;
+            return !string.IsNullOrEmpty(cleanDateText) ? cleanDateText : "Дата не указана";
         }
     }
 

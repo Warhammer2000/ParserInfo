@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Parser.Db;
+using Parser.Interfaces;
+using Parser.Models;
+using Parser.Repository;
 using Parser.Services;
 
 namespace Parser
@@ -8,23 +11,20 @@ namespace Parser
     {
         public static void Main(string[] args)
         {
-            DotNetEnv.Env.Load("secret.env");
-
             var builder = WebApplication.CreateBuilder(args);
 
-            var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+            builder.Services.Configure<ParserSettings>(builder.Configuration.GetSection("ParserSettings"));
 
             builder.Services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(connectionString));
+                options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
             builder.Services.AddMemoryCache();
+            builder.Services.AddHttpClient();
+            builder.Services.AddScoped<IPurchaseRepository, PurchaseRepository>();
+            builder.Services.AddScoped<PurchaseParsingService>();
+            builder.Services.AddScoped<PurchaseManagementService>();
 
             builder.Services.AddControllersWithViews();
-
-
-            builder.Services.AddTransient<DataParser>();
-            builder.Services.AddScoped<DataService>();
-            builder.Services.AddHttpClient();
 
             var app = builder.Build();
 
@@ -42,10 +42,9 @@ namespace Parser
 
             app.UseAuthorization();
 
-
             app.MapControllerRoute(
-                  name: "default",
-                  pattern: "{controller=Home}/{action=Index}/{id?}");
+                   name: "default",
+                   pattern: "{controller=Home}/{action=Index}/{id?}");
 
 
             app.Run();
