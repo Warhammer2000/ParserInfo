@@ -1,0 +1,159 @@
+﻿@model PurchaseViewModel
+
+@{
+    ViewData["Title"] = "Поиск закупок";
+}
+
+<style>
+    .card {
+        border: 1px solid #e3e3e3;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        padding: 15px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-header {
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+
+    .card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .card-title {
+        font-size: 1.1em;
+        color: #007bff;
+    }
+
+    .card-text {
+        font-size: 0.95em;
+        color: #333;
+    }
+
+    .card-footer {
+        font-size: 0.9em;
+        color: #777;
+        text-align: right;
+    }
+
+    .card-price {
+        font-size: 1.2em;
+        color: #28a745;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container mt-4">
+    <h1 class="text-center">@ViewData["Title"]</h1>
+    <form asp-controller="Data" asp-action="GetAllPurchases" method="get" class="mb-4">
+        <button type="submit" class="btn btn-secondary">Загрузить все товары</button>
+    </form>
+
+    <form asp-action="Index" method="post" class="mt-4">
+        <div class="form-row">
+            <div class="form-group col-md-8">
+                <label for="searchPhrase">Фраза для поиска:</label>
+                <input type="text" class="form-control" id="searchPhrase" name="searchPhrase" placeholder="Введите фразу для поиска" value="@Model.SearchPhrase" />
+            </div>
+            <div class="form-group col-md-4">
+                <label for="pageCount">Количество страниц для парсинга:</label>
+                <input type="number" class="form-control" id="pageCount" name="pageCount" value="@Model.PageCount" min="1" />
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-search"></i> Поиск</button>
+    </form>
+
+    @if (Model.Purchases != null && Model.Purchases.Any())
+    {
+        <h2 class="text-center mt-5">Результаты поиска</h2>
+
+        <div class="results-container">
+            <div class="row">
+                @foreach (var purchase in Model.Purchases)
+                {
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                @purchase.PurchaseNumber 
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">@purchase.Title</h5>
+                                <p class="card-text">Организатор: @purchase.Organizer</p>
+                                <p class="card-price">Цена: @purchase.Price</p>
+                                <p class="card-text">Дата окончания: @purchase.EndDate</p>
+                                <p class="card-text">Место: @purchase.Location</p>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center mt-4">
+                @if (Model.CurrentPage > 1)
+                {
+                    <li class="page-item">
+                        <a class="page-link" href="@Url.Action("Index", new { pageNumber = Model.CurrentPage - 1, searchPhrase = Model.SearchPhrase, pageCount = Model.PageCount })">Назад</a>
+                    </li>
+                }
+
+                @for (int i = 1; i <= Model.TotalPages; i++)
+                {
+                    if (i == 1 || i == Model.TotalPages || (i >= Model.CurrentPage - 2 && i <= Model.CurrentPage + 2))
+                    {
+                        <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
+                            <a class="page-link" href="@Url.Action("Index", new { pageNumber = i, searchPhrase = Model.SearchPhrase, pageCount = Model.PageCount })">@i</a>
+                        </li>
+                    }
+                    else if (i == 2 || i == Model.TotalPages - 1)
+                    {
+                        <li class="page-item">
+                            <span class="page-link">...</span>
+                        </li>
+                    }
+                }
+
+                @if (Model.CurrentPage < Model.TotalPages)
+                {
+                    <li class="page-item">
+                        <a class="page-link" href="@Url.Action("Index", new { pageNumber = Model.CurrentPage + 1, searchPhrase = Model.SearchPhrase, pageCount = Model.PageCount })">Вперед</a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    }
+    else
+    {
+        <p class="text-center mt-4">Результатов не найдено.</p>
+        }
+    </div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    const searchKey = '@Model.SearchPhrase' + '_' + '@Model.CurrentPage';
+    const cachedResults = localStorage.getItem(searchKey);
+
+    if (cachedResults) {
+        document.querySelector('.results-container').innerHTML = cachedResults;
+    } else {
+        fetchResultsFromServer();
+    }
+
+    function fetchResultsFromServer() {
+        const resultsContainer = document.querySelector('.results-container');
+        if (resultsContainer) {
+            const resultsHtml = resultsContainer.innerHTML;
+
+            localStorage.setItem(searchKey, resultsHtml);
+        } else {
+            console.error('Element with class "results-container" not found.');
+        }
+    }
+</script>
